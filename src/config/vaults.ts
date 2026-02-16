@@ -169,6 +169,18 @@ export const VAULT_ABI = [
     ],
     outputs: [{ name: '', type: 'bool' }],
   },
+  // ── Execute arbitrary calls ────────────────────────────────
+  {
+    name: 'execute',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'target', type: 'address' },
+      { name: 'value', type: 'uint256' },
+      { name: 'data', type: 'bytes' },
+    ],
+    outputs: [{ name: 'result', type: 'bytes' }],
+  },
   // ── Events ─────────────────────────────────────────────────
   {
     name: 'Withdraw',
@@ -218,6 +230,28 @@ export const ERC20_ABI = [
     outputs: [{ name: '', type: 'uint8' }],
   },
 ] as const
+
+// ── Merkl Distributor ABI ──────────────────────────────────
+// ABI for claiming rewards from Merkl distributor contract
+export const MERKL_DISTRIBUTOR_ABI = [
+  {
+    name: 'claim',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'users', type: 'address[]' },
+      { name: 'tokens', type: 'address[]' },
+      { name: 'amounts', type: 'uint256[]' },
+      { name: 'proofs', type: 'bytes32[][]' },
+    ],
+    outputs: [],
+  },
+] as const
+
+// Merkl distributor contract address on Monad (chain 143)
+// Verify this address at: https://app.merkl.xyz/status
+// This is the standard Merkl distributor address used across chains
+export const MERKL_DISTRIBUTOR_ADDRESS = '0x3Ef3D8bA38EBe18DB133cEc108f4D14CE00Dd9Ae' as const
 
 export interface VaultConfig {
   id: string

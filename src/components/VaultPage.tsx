@@ -4,6 +4,7 @@ import { useAprData } from '../hooks/useSharePriceApi'
 import { MetricsRow } from './MetricsRow'
 import { SharePriceChart } from './SharePriceChart'
 import { ActionPanel } from './ActionPanel'
+import { MerklRewards } from './MerklRewards'
 
 interface Props {
   vault: VaultConfig
@@ -78,6 +79,11 @@ export function VaultPage({ vault, onBack }: Props) {
             refetchVault={refetchVault}
           />
         </div>
+      </div>
+
+      {/* Merkl Rewards */}
+      <div className="mb-4">
+        <MerklRewards vaultAddress={userVaultAddress} chainId={143} />
       </div>
 
       {/* Strategy + Risk */}

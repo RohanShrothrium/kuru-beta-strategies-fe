@@ -169,3 +169,190 @@ export async function fetchAprData(
 export function getTimestampDaysAgo(days: number): number {
   return Math.floor(Date.now() / 1000) - (days * 24 * 60 * 60)
 }
+
+// ── Merkl API Types ─────────────────────────────────────────
+
+export interface MerklToken {
+  chainId: number
+  address: string
+  decimals: number
+  symbol: string
+  price: number
+}
+
+export interface MerklRewardBreakdown {
+  root: string
+  distributionChainId: number
+  reason: string
+  amount: string
+  claimed: string
+  pending: string
+  campaignId: string
+}
+
+export interface MerklReward {
+  root: string
+  distributionChainId: number
+  recipient: string
+  amount: string
+  claimed: string
+  pending: string
+  proofs: string[]
+  token: MerklToken
+  breakdowns: MerklRewardBreakdown[]
+}
+
+export interface MerklChainInfo {
+  endOfDisputePeriod: number
+  explorers: Array<{
+    chainId: number
+    id: string
+    type: string
+    url: string
+  }>
+  icon: string
+  id: number
+  liveCampaigns: number
+  name: string
+}
+
+export interface MerklChainRewards {
+  chain: MerklChainInfo
+  rewards: MerklReward[]
+}
+
+export interface MerklRewardsResponse {
+  chains: MerklChainRewards[]
+}
+
+// Normalized types for UI
+export interface NormalizedMerklReward {
+  tokenSymbol: string
+  tokenAddress: string
+  tokenPrice: number
+  tokenDecimals: number
+  totalAmount: number // in human-readable units
+  totalClaimed: number
+  totalPending: number
+  totalUsdValue: number
+  claimedUsdValue: number
+  pendingUsdValue: number
+  campaigns: Array<{
+    campaignId: string
+    reason: string
+    amount: number
+    claimed: number
+    pending: number
+  }>
+  // Raw claim data for executing claims
+  claimData: {
+    recipient: string
+    amount: string // total amount in Merkle tree (raw amount in wei)
+    claimableAmount: string // claimable amount = amount - claimed (raw amount in wei)
+    proofs: string[]
+  }
+}
+
+// ── Merkl API Functions ─────────────────────────────────────
+
+const MERKL_API_BASE = 'https://api.merkl.xyz/v4'
+
+/**
+ * Fetches Merkl rewards for a user address on a specific chain
+ * @param userAddress - The user's vault address (proxy)
+ * @param chainId - The chain ID (143 for Monad)
+ */
+export async function fetchMerklRewards(
+  userAddress: string,
+  chainId: number = 143
+): Promise<NormalizedMerklReward[]> {
+  if (!userAddress) {
+    return []
+  }
+
+  const url = `${MERKL_API_BASE}/users/${userAddress}/rewards?chainId=${chainId}&reloadChainId=${chainId}`
+  
+  try {
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error(`Failed to fetch Merkl rewards: ${response.statusText}`)
+    }
+    
+    const data: MerklChainRewards[] = await response.json()
+    
+    // Normalize the data for UI consumption
+    const normalized: NormalizedMerklReward[] = []
+    
+    for (const chainData of data) {
+      for (const reward of chainData.rewards) {
+        const token = reward.token
+        const decimals = token.decimals
+        const divisor = Math.pow(10, decimals)
+        
+        // Convert from wei-like units to human-readable
+        const totalAmount = parseFloat(reward.amount) / divisor
+        const totalClaimed = parseFloat(reward.claimed) / divisor
+        const totalPending = parseFloat(reward.pending) / divisor
+        
+        // Calculate USD values
+        const totalUsdValue = totalAmount * token.price
+        const claimedUsdValue = totalClaimed * token.price
+        const pendingUsdValue = totalPending * token.price
+        
+        // Process campaigns
+        const campaigns = reward.breakdowns.map(breakdown => ({
+          campaignId: breakdown.campaignId,
+          reason: breakdown.reason,
+          amount: parseFloat(breakdown.amount) / divisor,
+          claimed: parseFloat(breakdown.claimed) / divisor,
+          pending: parseFloat(breakdown.pending) / divisor,
+        }))
+        
+        // Calculate claimable amount
+        const amountBigInt = BigInt(reward.amount)
+        const claimedBigInt = BigInt(reward.claimed)
+        const claimableAmountBigInt = amountBigInt - claimedBigInt
+        
+        // Debug logging
+        console.log('Merkl Reward Debug:', {
+          token: token.symbol,
+          recipient: reward.recipient,
+          rawAmount: reward.amount,
+          rawClaimed: reward.claimed,
+          rawPending: reward.pending,
+          amountBigInt: amountBigInt.toString(),
+          claimedBigInt: claimedBigInt.toString(),
+          claimableAmountBigInt: claimableAmountBigInt.toString(),
+          totalAmount,
+          totalClaimed,
+          totalPending,
+        })
+        
+        normalized.push({
+          tokenSymbol: token.symbol,
+          tokenAddress: token.address,
+          tokenPrice: token.price,
+          tokenDecimals: decimals,
+          totalAmount,
+          totalClaimed,
+          totalPending,
+          totalUsdValue,
+          claimedUsdValue,
+          pendingUsdValue,
+          campaigns,
+          claimData: {
+            recipient: reward.recipient,
+            amount: reward.amount, // total amount in Merkle tree
+            claimableAmount: claimableAmountBigInt.toString(), // amount - claimed
+            proofs: reward.proofs,
+          },
+        })
+      }
+    }
+    
+    return normalized
+  } catch (error) {
+    console.error('Error fetching Merkl rewards:', error)
+    return []
+  }
+}
