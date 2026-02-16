@@ -48,6 +48,29 @@ export function SharePriceChart({ vault, userVaultAddress }: Props) {
     tvl: d.tvl,
   }))
 
+  // Calculate dynamic Y-axis domain with 10% padding
+  const calculateYDomain = () => {
+    if (!hasData) return undefined
+
+    const values = chartData.map((d) => (tab === 'price' ? d.price : d.tvl))
+    const min = Math.min(...values)
+    const max = Math.max(...values)
+
+    // Handle edge case where min === max (single value or flat line)
+    if (min === max) {
+      const padding = min * 0.1 || 0.1 // 10% padding, or 0.1 if value is 0
+      return [min - padding, max + padding]
+    }
+
+    // Calculate 10% padding
+    const range = max - min
+    const padding = range * 0.1
+
+    return [min - padding, max + padding]
+  }
+
+  const yDomain = calculateYDomain()
+
   return (
     <div className="rounded-xl border border-surface-border bg-surface-card p-5">
       {/* Header */}
@@ -124,6 +147,7 @@ export function SharePriceChart({ vault, userVaultAddress }: Props) {
                 interval="preserveStartEnd"
               />
               <YAxis
+                domain={yDomain}
                 tick={{ fill: '#71717a', fontSize: 11 }}
                 tickLine={false}
                 axisLine={false}
