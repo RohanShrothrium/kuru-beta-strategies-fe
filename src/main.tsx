@@ -3,6 +3,7 @@ import './index.css'
 
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { BrowserRouter } from 'react-router-dom'
 import { getDefaultConfig, RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit'
 import { WagmiProvider } from 'wagmi'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -22,30 +23,32 @@ const queryClient = new QueryClient()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <WagmiProvider config={wagmiConfig}>
-      <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider
-          theme={darkTheme({
-            accentColor: '#6ee7b7',
-            accentColorForeground: '#0e0f14',
-            borderRadius: 'medium',
-            fontStack: 'system',
-          })}
-        >
-          <App />
-          <Toaster
-            position="bottom-right"
-            toastOptions={{
-              style: {
-                background: '#13141c',
-                color: '#fff',
-                border: '1px solid #252637',
-                fontSize: 13,
-              },
-            }}
-          />
-        </RainbowKitProvider>
-      </QueryClientProvider>
-    </WagmiProvider>
+    <BrowserRouter>
+      <WagmiProvider config={wagmiConfig}>
+        <QueryClientProvider client={queryClient}>
+          <RainbowKitProvider
+            theme={darkTheme({
+              accentColor: '#6ee7b7',
+              accentColorForeground: '#0e0f14',
+              borderRadius: 'medium',
+              fontStack: 'system',
+            })}
+          >
+            <App />
+            <Toaster
+              position="bottom-right"
+              toastOptions={{
+                style: {
+                  background: '#13141c',
+                  color: '#fff',
+                  border: '1px solid #252637',
+                  fontSize: 13,
+                },
+              }}
+            />
+          </RainbowKitProvider>
+        </QueryClientProvider>
+      </WagmiProvider>
+    </BrowserRouter>
   </React.StrictMode>,
 )

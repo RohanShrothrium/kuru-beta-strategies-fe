@@ -4,11 +4,48 @@
 // All on-chain addresses for each QuoteOnlyVault deployment.
 // Add new vaults here — the UI picks them up automatically.
 //
-// API data fields that need to be hydrated (currently placeholder):
-//   - apy:          30d trailing APY from indexed share price data
-//   - apyHistory:   time-series of { timestamp, sharePrice, tvl } for the chart
-//   - totalDeposited: aggregate USDC deposited across all users
+// Architecture: VaultFactory creates EIP-1167 clones — one per
+// user. Each user has their own vault address (fetched via
+// factory.vaultOf(userAddress)). There is no shared proxy.
+//
+// APR and share price history are fetched dynamically from the
+// backend API endpoints (/api/rest/history and /api/rest/apr)
 // ============================================================
+
+export const FACTORY_ABI = [
+  // ── Factory actions ────────────────────────────────────────
+  {
+    name: 'createVault',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [],
+    outputs: [{ name: 'vault', type: 'address' }],
+  },
+  // ── Factory views ──────────────────────────────────────────
+  {
+    name: 'vaultOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'user', type: 'address' }],
+    outputs: [{ name: 'vault', type: 'address' }],
+  },
+  {
+    name: 'implementation',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  // ── Events ─────────────────────────────────────────────────
+  {
+    name: 'VaultCreated',
+    type: 'event',
+    inputs: [
+      { name: 'user', type: 'address', indexed: true },
+      { name: 'vault', type: 'address', indexed: true },
+    ],
+  },
+] as const
 
 export const VAULT_ABI = [
   // ── User actions ───────────────────────────────────────────
@@ -102,11 +139,13 @@ export const VAULT_ABI = [
     inputs: [],
     outputs: [{ name: '', type: 'uint256' }],
   },
+  // Vault-wide Kuru deposit timestamp — controls the withdraw lock.
+  // (Per-user vault: only one depositor, so this equals the owner's last deposit time.)
   {
-    name: 'lastDepositTime',
+    name: 'lastKuruDepositTime',
     type: 'function',
     stateMutability: 'view',
-    inputs: [{ name: 'account', type: 'address' }],
+    inputs: [],
     outputs: [{ name: '', type: 'uint256' }],
   },
   // ── ERC20 (inherited) ──────────────────────────────────────
@@ -129,6 +168,18 @@ export const VAULT_ABI = [
       { name: 'amount', type: 'uint256' },
     ],
     outputs: [{ name: '', type: 'bool' }],
+  },
+  // ── Execute arbitrary calls ────────────────────────────────
+  {
+    name: 'execute',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'target', type: 'address' },
+      { name: 'value', type: 'uint256' },
+      { name: 'data', type: 'bytes' },
+    ],
+    outputs: [{ name: 'result', type: 'bytes' }],
   },
   // ── Events ─────────────────────────────────────────────────
   {
@@ -180,12 +231,27 @@ export const ERC20_ABI = [
   },
 ] as const
 
-// ── Share price history shape (populated by API later) ──────
-export interface SharePricePoint {
-  timestamp: number   // unix seconds
-  sharePrice: number  // USDC per 1 share-unit (quote-decimal normalised)
-  tvl: number         // total assets in USD
-}
+// ── Merkl Distributor ABI ──────────────────────────────────
+// ABI for claiming rewards from Merkl distributor contract
+export const MERKL_DISTRIBUTOR_ABI = [
+  {
+    name: 'claim',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'users', type: 'address[]' },
+      { name: 'tokens', type: 'address[]' },
+      { name: 'amounts', type: 'uint256[]' },
+      { name: 'proofs', type: 'bytes32[][]' },
+    ],
+    outputs: [],
+  },
+] as const
+
+// Merkl distributor contract address on Monad (chain 143)
+// Verify this address at: https://app.merkl.xyz/status
+// This is the standard Merkl distributor address used across chains
+export const MERKL_DISTRIBUTOR_ADDRESS = '0x3Ef3D8bA38EBe18DB133cEc108f4D14CE00Dd9Ae' as const
 
 export interface VaultConfig {
   id: string
@@ -199,12 +265,13 @@ export interface VaultConfig {
   quoteSymbol: string
   quoteAddress: `0x${string}`
   quoteDecimals: number
-  proxyAddress: `0x${string}`
+  // Factory that creates per-user vault clones (replaces shared proxyAddress)
+  factoryAddress: `0x${string}`
+  // Implementation contract (shared logic for all clones)
   implementationAddress: `0x${string}`
+  // Default vault address to show example charts/data (when user hasn't created their vault)
+  defaultVaultAddress?: `0x${string}`
   comingSoon?: boolean
-  // API-sourced fields (placeholder until APIs are wired)
-  apy: number | null       // null = not yet available
-  apyHistory: SharePricePoint[]
 }
 
 export const VAULTS: VaultConfig[] = [
@@ -222,28 +289,24 @@ export const VAULTS: VaultConfig[] = [
       'MON is borrowed from Neverland at ~50% LTV against the collateral and deposited alongside the USDC into Kuru.',
       'Kuru earns spread and fee revenue by providing liquidity around the mid-price.',
       'The Neverland borrow precisely offsets the MON long in Kuru, making returns delta-neutral to MON price.',
-      'A keeper calls rebalance() when LTV drifts outside 45–55% to keep the hedge tight.',
+      'Each user owns their own vault — no shared lock contention. Your 4-day unlock is isolated to your deposits only.',
     ],
     risks: [
       'Smart contract risk in QuoteOnlyVault, Kuru, and Neverland.',
       'Oracle risk: positions are priced by the Neverland oracle (RedStone).',
       'LTV drift: rapid MON price moves can widen the hedge before rebalance fires.',
       'Liquidity risk: Kuru withdrawals are subject to a 4-day unlock period.',
-      'Neverland borrow rate risk: rising borrow rates reduce net yield.',
+      'Borrow rate risk: rising MON borrow rates on Neverland reduce net yield.',
     ],
     baseSymbol: 'MON',
     baseDecimals: 18,
     quoteSymbol: 'USDC',
     quoteAddress: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603',
     quoteDecimals: 6,
-    proxyAddress: '0xb49ba2E12a7d2BfF6E2870A0B9b7Ab387737abAF',
-    implementationAddress: '0x7e2c26bF237c2AC8f914E565DcCF46Bd4Ab4A03b',
-    // ── API TODO ──────────────────────────────────────────────
-    // apy: fetch 30d trailing APY from /api/vaults/monusdc/apy
-    // apyHistory: fetch from /api/vaults/monusdc/history?interval=1d&limit=90
-    //   each point: { timestamp, sharePrice, tvl }
-    apy: null,
-    apyHistory: [],
+    // TODO: update factoryAddress once VaultFactory is deployed (run script/DeployVaultSystem.s.sol)
+    factoryAddress: '0xCcb57703b65A8643401b11Cb40878F8cE0d622A3',
+    implementationAddress: '0x352cE7130447023e0eF5D039e6E05A38DC781C10',
+    defaultVaultAddress: '0x560f2b3c4d56e38b449a3a68be033be21dfc4929',
   },
   {
     id: 'monausd',
@@ -259,19 +322,22 @@ export const VAULTS: VaultConfig[] = [
       'Delta-neutral: MON long inside Kuru is offset by the Neverland MON borrow.',
     ],
     risks: [
-      'Same risks as MON/USDC vault.',
-      'Additional AUSD peg risk relative to USD.',
+      'Smart contract risk in QuoteOnlyVault, Kuru, and Neverland.',
+      'Oracle risk: positions are priced by the Neverland oracle (RedStone).',
+      'LTV drift: rapid MON price moves can widen the hedge before rebalance fires.',
+      'Liquidity risk: Kuru withdrawals are subject to a 4-day unlock period.',
+      'Borrow rate risk: rising MON borrow rates on Neverland reduce net yield.',
+      'AUSD peg risk: AUSD may trade at a discount or premium to USD.',
     ],
     baseSymbol: 'MON',
     baseDecimals: 18,
     quoteSymbol: 'AUSD',
     // Placeholder — update once deployed
-    quoteAddress: '0x0000000000000000000000000000000000000000',
+    quoteAddress: '0x00000000eFE302BEAA2b3e6e1b18d08D69a9012a',
     quoteDecimals: 6,
-    proxyAddress: '0x0000000000000000000000000000000000000000',
-    implementationAddress: '0x0000000000000000000000000000000000000000',
-    comingSoon: true,
-    apy: null,
-    apyHistory: [],
+    factoryAddress: '0x79B99A1e9fF8F16a198Dac4b42Fd164680487062',
+    implementationAddress: '0x27F27Da576b1E0f8720d98A989a1877d68e9EFCC',
+    defaultVaultAddress: '0x7a353534c71d5ac9940f84a3e0356b421d25591d',
+    comingSoon: false,
   },
 ]
