@@ -30,6 +30,7 @@ export interface AprSnapshot {
 export interface AprResponse {
   latest: AprSnapshot[]
   historical: AprSnapshot[]
+  earliest: AprSnapshot[]
 }
 
 // ── Normalized Types (for UI consumption) ──────────────────
@@ -129,11 +130,16 @@ export async function fetchAprData(
       blockNumber: parseInt(data.latest[0].blockNumber),
     } : null
 
+    // historical returns either the historical point (if available) or the earliest point (as fallback)
     const historical = data.historical[0] ? {
       timestamp: parseInt(data.historical[0].timestamp),
       sharePrice: parseFloat(data.historical[0].sharePriceE18) / 1e18,
       blockNumber: parseInt(data.historical[0].blockNumber),
-    } : null
+    } : (data.earliest[0] ? {
+      timestamp: parseInt(data.earliest[0].timestamp),
+      sharePrice: parseFloat(data.earliest[0].sharePriceE18) / 1e18,
+      blockNumber: parseInt(data.earliest[0].blockNumber),
+    } : null)
 
     // Calculate APR if we have both data points
     let aprPercent: number | null = null

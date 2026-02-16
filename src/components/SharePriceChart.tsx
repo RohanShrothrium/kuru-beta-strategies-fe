@@ -46,7 +46,51 @@ export function SharePriceChart({ vault, userVaultAddress }: Props) {
     date: formatDate(d.timestamp, showTime),
     price: d.sharePrice,
     tvl: d.tvl,
+    timestamp: d.timestamp,
   }))
+
+  // Calculate 6 evenly spaced x-axis ticks from lowest to highest timestamp
+  const getXAxisTicks = () => {
+    if (!hasData || chartData.length === 0) return []
+    
+    const dataLength = chartData.length
+    if (dataLength <= 6) {
+      // If we have 6 or fewer data points, show all of them
+      return chartData.map((d) => d.date)
+    }
+    
+    // Calculate 6 evenly spaced indices (including first and last)
+    const indices: number[] = []
+    const numTicks = 6
+    
+    for (let i = 0; i < numTicks; i++) {
+      if (i === 0) {
+        // First tick: lowest timestamp
+        indices.push(0)
+      } else if (i === numTicks - 1) {
+        // Last tick: highest timestamp
+        indices.push(dataLength - 1)
+      } else {
+        // Evenly spaced ticks in between
+        const index = Math.round((i / (numTicks - 1)) * (dataLength - 1))
+        // Avoid duplicates
+        if (index !== indices[indices.length - 1] && index < dataLength - 1) {
+          indices.push(index)
+        }
+      }
+    }
+    
+    // Ensure we have the last index if it wasn't added
+    if (indices[indices.length - 1] !== dataLength - 1) {
+      indices.push(dataLength - 1)
+    }
+    
+    // Remove duplicates and return the date labels
+    const uniqueIndices = [...new Set(indices)]
+    return uniqueIndices.map((idx) => chartData[idx].date)
+  }
+
+  const xAxisTicks = getXAxisTicks()
 
   // Calculate dynamic Y-axis domain with 10% padding
   const calculateYDomain = () => {
@@ -144,7 +188,8 @@ export function SharePriceChart({ vault, userVaultAddress }: Props) {
                 tick={{ fill: '#71717a', fontSize: 11 }}
                 tickLine={false}
                 axisLine={false}
-                interval="preserveStartEnd"
+                ticks={xAxisTicks}
+                interval={0}
               />
               <YAxis
                 domain={yDomain}
