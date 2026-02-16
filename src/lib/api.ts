@@ -2,9 +2,9 @@
 // API Client for Kuru Backend
 // ============================================================
 // Utilities for fetching share price history and APR data
-// from the backend REST API
+// from the backend GraphQL API
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/rest'
+const GRAPHQL_API_URL = import.meta.env.VITE_GRAPHQL_API_URL || 'http://localhost:8080/v1/graphql'
 
 // ── API Response Types ──────────────────────────────────────
 
@@ -57,6 +57,115 @@ export interface AprData {
   aprPercent: number | null   // calculated APR as percentage
 }
 
+// ── GraphQL Query Strings ───────────────────────────────────
+
+const HISTORY_SHARE_PRICE_AND_TVL_QUERY = `
+  query HistorySharePriceAndTVL(
+    $vaultId: String!
+    $fromTimestamp: numeric!
+    $limit: Int = 1000
+  ) {
+    SharePricePoint(
+      where: {
+        vault_id: { _eq: $vaultId }
+        timestamp: { _gte: $fromTimestamp }
+        source: {_eq: "Block"}
+      }
+      limit: $limit
+      order_by: { timestamp: asc }
+    ) {
+      timestamp
+      tvl
+      sharePriceE18
+      blockNumber
+      vault_id
+      source
+    }
+  }
+`
+
+const CALCULATE_APR_QUERY = `
+  query CalculateAPR(
+    $vaultId: String!
+    $fromTimestamp: numeric!
+  ) {
+    latest: SharePricePoint(
+      where: { vault_id: { _eq: $vaultId } }
+      order_by: { timestamp: desc }
+      limit: 1
+    ) {
+      timestamp
+      sharePriceE18
+      blockNumber
+    }
+    
+    historical: SharePricePoint(
+      where: { 
+        vault_id: { _eq: $vaultId }
+        timestamp: { _lte: $fromTimestamp }
+      }
+      order_by: { timestamp: desc }
+      limit: 1
+    ) {
+      timestamp
+      sharePriceE18
+      blockNumber
+    }
+    
+    earliest: SharePricePoint(
+      where: { vault_id: { _eq: $vaultId } }
+      order_by: { timestamp: asc }
+      limit: 1
+    ) {
+      timestamp
+      sharePriceE18
+      blockNumber
+    }
+  }
+`
+
+// ── GraphQL Helper Functions ────────────────────────────────
+
+interface GraphQLResponse<T> {
+  data?: T
+  errors?: Array<{
+    message: string
+    extensions?: Record<string, unknown>
+  }>
+}
+
+async function graphqlRequest<T>(
+  query: string,
+  variables: Record<string, unknown>
+): Promise<T> {
+  const response = await fetch(GRAPHQL_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      query,
+      variables,
+    }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`GraphQL request failed: ${response.statusText}`)
+  }
+
+  const result: GraphQLResponse<T> = await response.json()
+
+  if (result.errors && result.errors.length > 0) {
+    throw new Error(`GraphQL errors: ${result.errors.map(e => e.message).join(', ')}`)
+  }
+
+  if (!result.data) {
+    throw new Error('GraphQL response missing data')
+  }
+
+  return result.data
+}
+
 // ── API Functions ───────────────────────────────────────────
 
 /**
@@ -70,31 +179,35 @@ export async function fetchSharePriceHistory(
   fromTimestamp?: number,
   limit?: number
 ): Promise<NormalizedSharePricePoint[]> {
-  const params = new URLSearchParams()
-  params.append('vaultId', vaultId.toLowerCase())
-  if (fromTimestamp) params.append('fromTimestamp', fromTimestamp.toString())
-  if (limit) params.append('limit', limit.toString())
-
-  const url = `${API_BASE_URL}/history?${params}`
-  
   try {
-    const response = await fetch(url)
-    if (!response.ok) {
-      throw new Error(`Failed to fetch share price history: ${response.statusText}`)
-    }
+    // Default fromTimestamp to 90 days ago if not provided
+    const timestamp = fromTimestamp ?? getTimestampDaysAgo(90)
+    const queryLimit = limit ?? 1000
+
+    const data = await graphqlRequest<SharePriceHistoryResponse>(
+      HISTORY_SHARE_PRICE_AND_TVL_QUERY,
+      {
+        vaultId: vaultId.toLowerCase(),
+        fromTimestamp: timestamp,
+        limit: queryLimit,
+      }
+    )
     
-    const data: SharePriceHistoryResponse = await response.json()
-    
-    // Normalize the data for UI consumption
-    return data.SharePricePoint.map(point => ({
-      timestamp: parseInt(point.timestamp),
-      // Convert from E18 to human-readable (divide by 10^18)
-      sharePrice: parseFloat(point.sharePriceE18) / 1e18,
-      // TVL is in token units (6 decimals for USDC), normalize to USD
-      tvl: parseFloat(point.tvl) / 1e6,
-      blockNumber: parseInt(point.blockNumber),
-      source: point.source,
-    }))
+    // Filter out entries where sharePrice is 0, then normalize the data for UI consumption
+    return data.SharePricePoint
+      .filter(point => {
+        const sharePrice = parseFloat(point.sharePriceE18)
+        return sharePrice > 0
+      })
+      .map(point => ({
+        timestamp: parseInt(point.timestamp),
+        // Convert from E18 to human-readable (divide by 10^18)
+        sharePrice: parseFloat(point.sharePriceE18) / 1e18,
+        // TVL is in token units (6 decimals for USDC), normalize to USD
+        tvl: parseFloat(point.tvl) / 1e6,
+        blockNumber: parseInt(point.blockNumber),
+        source: point.source,
+      }))
   } catch (error) {
     console.error('Error fetching share price history:', error)
     return []
@@ -110,35 +223,38 @@ export async function fetchAprData(
   vaultId: string,
   fromTimestamp?: number
 ): Promise<AprData> {
-  const params = new URLSearchParams()
-  params.append('vaultId', vaultId.toLowerCase())
-  if (fromTimestamp) params.append('fromTimestamp', fromTimestamp.toString())
-
-  const url = `${API_BASE_URL}/apr?${params}`
-  
   try {
-    const response = await fetch(url)
-    if (!response.ok) {
-      throw new Error(`Failed to fetch APR data: ${response.statusText}`)
-    }
+    // Default fromTimestamp to 30 days ago if not provided
+    const timestamp = fromTimestamp ?? getTimestampDaysAgo(30)
+
+    const data = await graphqlRequest<AprResponse>(
+      CALCULATE_APR_QUERY,
+      {
+        vaultId: vaultId.toLowerCase(),
+        fromTimestamp: timestamp,
+      }
+    )
     
-    const data: AprResponse = await response.json()
-    
-    const latest = data.latest[0] ? {
-      timestamp: parseInt(data.latest[0].timestamp),
-      sharePrice: parseFloat(data.latest[0].sharePriceE18) / 1e18,
-      blockNumber: parseInt(data.latest[0].blockNumber),
+    // Filter out entries where sharePrice is 0
+    const latestPoint = data.latest.find(point => parseFloat(point.sharePriceE18) > 0)
+    const latest = latestPoint ? {
+      timestamp: parseInt(latestPoint.timestamp),
+      sharePrice: parseFloat(latestPoint.sharePriceE18) / 1e18,
+      blockNumber: parseInt(latestPoint.blockNumber),
     } : null
 
     // historical returns either the historical point (if available) or the earliest point (as fallback)
-    const historical = data.historical[0] ? {
-      timestamp: parseInt(data.historical[0].timestamp),
-      sharePrice: parseFloat(data.historical[0].sharePriceE18) / 1e18,
-      blockNumber: parseInt(data.historical[0].blockNumber),
-    } : (data.earliest[0] ? {
-      timestamp: parseInt(data.earliest[0].timestamp),
-      sharePrice: parseFloat(data.earliest[0].sharePriceE18) / 1e18,
-      blockNumber: parseInt(data.earliest[0].blockNumber),
+    // Filter out entries where sharePrice is 0
+    const historicalPoint = data.historical.find(point => parseFloat(point.sharePriceE18) > 0)
+    const earliestPoint = data.earliest.find(point => parseFloat(point.sharePriceE18) > 0)
+    const historical = historicalPoint ? {
+      timestamp: parseInt(historicalPoint.timestamp),
+      sharePrice: parseFloat(historicalPoint.sharePriceE18) / 1e18,
+      blockNumber: parseInt(historicalPoint.blockNumber),
+    } : (earliestPoint ? {
+      timestamp: parseInt(earliestPoint.timestamp),
+      sharePrice: parseFloat(earliestPoint.sharePriceE18) / 1e18,
+      blockNumber: parseInt(earliestPoint.blockNumber),
     } : null)
 
     // Calculate APR if we have both data points
