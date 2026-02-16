@@ -1,5 +1,9 @@
 import { defineChain } from 'viem'
 
+// Get RPC URL from environment variable with fallback
+const MONAD_RPC_URL = import.meta.env.VITE_MONAD_RPC_URL || 
+  'https://monad-mainnet.api.onfinality.io/public'
+
 // TODO: verify Monad mainnet chain ID before production deployment
 export const monad = defineChain({
   id: 143,
@@ -11,7 +15,7 @@ export const monad = defineChain({
   },
   rpcUrls: {
     default: {
-      http: ['https://rpc.monad.fastlane.xyz/eyJhIjoiMHg3NGNlQ2RFOUUzMWI5NjFhNjVEMGExQ2JGNDk0ODM2ZTQ0YTU1YjFhIiwidCI6MTc3MDkyODU5MiwicyI6IjB4YTRiZWFmNjlmZDdmZDEzZTNiY2MyMDBmYzk5Nzk0MjgxYzJjNDJlYTNlNDlhNDNiZDFhY2Y5OTFmYjhiOTNhZjNjNjBjNzFiMmZlYjZiNzNjNGQ0OGQ1MGNjNTM0N2FjYWI4ODJkOWRmMzdhNTUzNWQxNmUyY2E1Y2IzYTU2NjQxYyJ9'],
+      http: [MONAD_RPC_URL],
     },
   },
   blockExplorers: {

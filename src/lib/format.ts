@@ -51,8 +51,20 @@ export function formatCountdown(unlockAt: number): string {
   return `${m}m`
 }
 
-export function formatDate(timestamp: number): string {
-  return new Date(timestamp * 1000).toLocaleDateString('en-US', {
+export function formatDate(timestamp: number, showTime = false): string {
+  const date = new Date(timestamp * 1000)
+  
+  if (showTime) {
+    // For short time frames, show time
+    return date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    })
+  }
+  
+  // For longer time frames, show date
+  return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
   })

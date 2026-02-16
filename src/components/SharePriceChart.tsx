@@ -7,27 +7,43 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
-import { type SharePricePoint, type VaultConfig } from '../config/vaults'
+import { type VaultConfig } from '../config/vaults'
 import { formatDate } from '../lib/format'
+import { useSharePriceHistory } from '../hooks/useSharePriceApi'
 
 interface Props {
   vault: VaultConfig
-  // API TODO: pass real data from /api/vaults/:id/history
-  // Shape: { timestamp: number, sharePrice: number, tvl: number }[]
-  data: SharePricePoint[]
+  userVaultAddress?: `0x${string}`
 }
 
 type ActiveTab = 'price' | 'tvl'
+type TimeFrame = 1 | 10 | 30
 
 import { useState } from 'react'
 
-export function SharePriceChart({ vault, data }: Props) {
+export function SharePriceChart({ vault, userVaultAddress }: Props) {
   const [tab, setTab] = useState<ActiveTab>('price')
+  const [timeFrame, setTimeFrame] = useState<TimeFrame>(1)
+
+  // Use user's vault if they have one, otherwise show default vault as example
+  const vaultToQuery = userVaultAddress || vault.defaultVaultAddress || ''
+  const isShowingExample = !userVaultAddress && !!vault.defaultVaultAddress
+
+  // Fetch share price history from API based on selected time frame
+  const { data, isLoading } = useSharePriceHistory(
+    vaultToQuery,
+    timeFrame,
+    undefined,
+    !!vaultToQuery // Only fetch if we have a vault address
+  )
 
   const hasData = data.length > 0
 
+  // Show time for 1-day view, date for longer periods
+  const showTime = timeFrame === 1
+  
   const chartData = data.map((d) => ({
-    date: formatDate(d.timestamp),
+    date: formatDate(d.timestamp, showTime),
     price: d.sharePrice,
     tvl: d.tvl,
   }))
@@ -35,28 +51,52 @@ export function SharePriceChart({ vault, data }: Props) {
   return (
     <div className="rounded-xl border border-surface-border bg-surface-card p-5">
       {/* Header */}
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-semibold text-white">Performance</h3>
-          <p className="mt-0.5 text-xs text-zinc-500">
-            {hasData ? 'Historic share price · 90 days' : 'No history yet'}
-          </p>
+      <div className="mb-4">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-white">Performance</h3>
+            <p className="mt-0.5 text-xs text-zinc-500">
+              {hasData 
+                ? isShowingExample 
+                  ? `Example vault · Historic share price · ${timeFrame}d`
+                  : `Your vault · Historic share price · ${timeFrame}d`
+                : 'No history yet'}
+            </p>
+          </div>
+
+          {/* Tab toggle */}
+          <div className="flex rounded-lg border border-surface-border bg-surface-elevated p-0.5">
+            {(['price', 'tvl'] as ActiveTab[]).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={[
+                  'rounded-md px-3 py-1 text-xs font-medium transition-colors',
+                  tab === t
+                    ? 'bg-accent-muted text-accent'
+                    : 'text-zinc-500 hover:text-zinc-300',
+                ].join(' ')}
+              >
+                {t === 'price' ? 'Share Price' : 'TVL'}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Tab toggle */}
-        <div className="flex rounded-lg border border-surface-border bg-surface-elevated p-0.5">
-          {(['price', 'tvl'] as ActiveTab[]).map((t) => (
+        {/* Time frame selector */}
+        <div className="flex gap-1">
+          {([1, 10, 30] as TimeFrame[]).map((days) => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
+              key={days}
+              onClick={() => setTimeFrame(days)}
               className={[
-                'rounded-md px-3 py-1 text-xs font-medium transition-colors',
-                tab === t
+                'rounded px-2.5 py-1 text-xs font-medium transition-colors',
+                timeFrame === days
                   ? 'bg-accent-muted text-accent'
-                  : 'text-zinc-500 hover:text-zinc-300',
+                  : 'text-zinc-500 hover:bg-surface-elevated hover:text-zinc-300',
               ].join(' ')}
             >
-              {t === 'price' ? 'Share Price' : 'TVL'}
+              {days}d
             </button>
           ))}
         </div>
@@ -64,7 +104,9 @@ export function SharePriceChart({ vault, data }: Props) {
 
       {/* Chart area */}
       <div className="h-52">
-        {hasData ? (
+        {isLoading ? (
+          <LoadingChart />
+        ) : hasData ? (
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
               <defs>
@@ -125,8 +167,9 @@ export function SharePriceChart({ vault, data }: Props) {
 
       {/* API note */}
       <p className="mt-3 text-xs text-zinc-600">
-        {/* TODO: remove this note once API is wired */}
-        Data sourced from on-chain snapshots · updates every hour
+        {isShowingExample 
+          ? 'Showing example vault data · Create your vault to track your own performance'
+          : 'Your personal vault data · TVL and APR are per-user metrics'}
       </p>
     </div>
   )
@@ -153,6 +196,15 @@ function EmptyChart() {
         ))}
       </div>
       <div className="text-xs text-zinc-700">wireframe · data coming soon</div>
+    </div>
+  )
+}
+
+function LoadingChart() {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-surface-border border-t-accent" />
+      <div className="text-xs text-zinc-500">Loading chart data...</div>
     </div>
   )
 }

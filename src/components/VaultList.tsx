@@ -1,5 +1,7 @@
 import { VAULTS, type VaultConfig } from '../config/vaults'
 import { formatAPY } from '../lib/format'
+import { useUserVault } from '../hooks/useVaultData'
+import { useAprData } from '../hooks/useSharePriceApi'
 
 interface Props {
   onSelect: (vault: VaultConfig) => void
@@ -26,6 +28,17 @@ export function VaultList({ onSelect }: Props) {
 }
 
 function VaultCard({ vault, onSelect }: { vault: VaultConfig; onSelect: (v: VaultConfig) => void }) {
+  // Get user's personal vault address (if they have one)
+  const { userVaultAddress, hasVault } = useUserVault(vault)
+  
+  // Fetch APR data from user's personal vault (30-day trailing)
+  // Only fetch if user has a vault
+  const { data: aprData } = useAprData(
+    userVaultAddress || '',
+    30,
+    hasVault, // Only fetch if user has a vault
+    60_000
+  )
   return (
     <button
       onClick={() => !vault.comingSoon && onSelect(vault)}
@@ -56,9 +69,9 @@ function VaultCard({ vault, onSelect }: { vault: VaultConfig; onSelect: (v: Vaul
       {/* Metrics footer */}
       <div className="mt-auto flex items-center justify-between border-t border-surface-border pt-4">
         <div>
-          <div className="text-xs text-zinc-500">APY</div>
+          <div className="text-xs text-zinc-500">APR</div>
           <div className="font-mono text-sm font-semibold text-accent">
-            {formatAPY(vault.apy)}
+            {hasVault ? formatAPY(aprData.aprPercent) : '—'}
           </div>
         </div>
         <div className="text-right">

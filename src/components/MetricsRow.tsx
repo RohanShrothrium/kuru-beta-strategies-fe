@@ -14,9 +14,10 @@ interface Props {
   vault: VaultConfig
   data: VaultData
   hasVault: boolean
+  aprPercent: number | null
 }
 
-export function MetricsRow({ vault, data, hasVault }: Props) {
+export function MetricsRow({ vault, data, hasVault, aprPercent }: Props) {
   const { address } = useAccount()
 
   // Lock is vault-wide: lastKuruDepositTime is set when the owner deposits into Kuru.
@@ -37,7 +38,7 @@ export function MetricsRow({ vault, data, hasVault }: Props) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
       <MetricCard
-        label="Vault NAV"
+        label="Your Vault NAV"
         value={hasVault ? formatUSD(data.totalAssets, vault.quoteDecimals) : '—'}
         sub={hasVault ? `${formatUSD(data.totalAssets, vault.quoteDecimals, { prefix: false })} ${vault.quoteSymbol}` : noVaultSub}
         loading={hasVault && data.isLoading}
@@ -50,11 +51,11 @@ export function MetricsRow({ vault, data, hasVault }: Props) {
         highlight={hasVault}
       />
       <MetricCard
-        label="APY"
-        value={formatAPY(vault.apy)}
-        sub="30-day trailing"
+        label={hasVault ? "Your APR" : "APR (example)"}
+        value={formatAPY(aprPercent)}
+        sub={hasVault ? "30d trailing · your vault" : "30d trailing · sample"}
         loading={false}
-        highlight={vault.apy !== null}
+        highlight={aprPercent !== null}
       />
       <MetricCard
         label="Aave LTV"

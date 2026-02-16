@@ -8,10 +8,8 @@
 // user. Each user has their own vault address (fetched via
 // factory.vaultOf(userAddress)). There is no shared proxy.
 //
-// API data fields that need to be hydrated (currently placeholder):
-//   - apy:          30d trailing APY from indexed share price data
-//   - apyHistory:   time-series of { timestamp, sharePrice, tvl } for the chart
-//   - totalDeposited: aggregate USDC deposited across all users
+// APR and share price history are fetched dynamically from the
+// backend API endpoints (/api/rest/history and /api/rest/apr)
 // ============================================================
 
 export const FACTORY_ABI = [
@@ -221,13 +219,6 @@ export const ERC20_ABI = [
   },
 ] as const
 
-// ── Share price history shape (populated by API later) ──────
-export interface SharePricePoint {
-  timestamp: number   // unix seconds
-  sharePrice: number  // USDC per 1 share-unit (quote-decimal normalised)
-  tvl: number         // total assets in USD
-}
-
 export interface VaultConfig {
   id: string
   name: string
@@ -244,10 +235,9 @@ export interface VaultConfig {
   factoryAddress: `0x${string}`
   // Implementation contract (shared logic for all clones)
   implementationAddress: `0x${string}`
+  // Default vault address to show example charts/data (when user hasn't created their vault)
+  defaultVaultAddress?: `0x${string}`
   comingSoon?: boolean
-  // API-sourced fields (placeholder until APIs are wired)
-  apy: number | null       // null = not yet available
-  apyHistory: SharePricePoint[]
 }
 
 export const VAULTS: VaultConfig[] = [
@@ -282,12 +272,7 @@ export const VAULTS: VaultConfig[] = [
     // TODO: update factoryAddress once VaultFactory is deployed (run script/DeployVaultSystem.s.sol)
     factoryAddress: '0xCcb57703b65A8643401b11Cb40878F8cE0d622A3',
     implementationAddress: '0x352cE7130447023e0eF5D039e6E05A38DC781C10',
-    // ── API TODO ──────────────────────────────────────────────
-    // apy: fetch 30d trailing APY from /api/vaults/monusdc/apy
-    // apyHistory: fetch from /api/vaults/monusdc/history?interval=1d&limit=90
-    //   each point: { timestamp, sharePrice, tvl }
-    apy: null,
-    apyHistory: [],
+    defaultVaultAddress: '0x560f2b3c4d56e38b449a3a68be033be21dfc4929',
   },
   {
     id: 'monausd',
@@ -314,8 +299,7 @@ export const VAULTS: VaultConfig[] = [
     quoteDecimals: 6,
     factoryAddress: '0x79B99A1e9fF8F16a198Dac4b42Fd164680487062',
     implementationAddress: '0x27F27Da576b1E0f8720d98A989a1877d68e9EFCC',
+    defaultVaultAddress: '0x7a353534c71d5ac9940f84a3e0356b421d25591d',
     comingSoon: false,
-    apy: null,
-    apyHistory: [],
   },
 ]
