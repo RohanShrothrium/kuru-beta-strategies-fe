@@ -1,5 +1,5 @@
 import { type VaultConfig } from '../config/vaults'
-import { useVaultData } from '../hooks/useVaultData'
+import { useVaultData, useUserVault } from '../hooks/useVaultData'
 import { MetricsRow } from './MetricsRow'
 import { SharePriceChart } from './SharePriceChart'
 import { ActionPanel } from './ActionPanel'
@@ -10,7 +10,12 @@ interface Props {
 }
 
 export function VaultPage({ vault, onBack }: Props) {
-  const data = useVaultData(vault)
+  // Resolve the connected user's personal vault clone address (or undefined if none).
+  const { userVaultAddress, hasVault, refetch: refetchVault } = useUserVault(vault)
+
+  // All on-chain metrics come from the user's own vault.
+  // When hasVault is false, data returns sensible zero-defaults.
+  const data = useVaultData(vault, userVaultAddress)
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
@@ -30,6 +35,7 @@ export function VaultPage({ vault, onBack }: Props) {
           <Tag>{vault.quoteSymbol}</Tag>
           <Tag dim>Delta Neutral</Tag>
           <Tag dim>Kuru + Neverland</Tag>
+          <Tag dim>Per-User Vault</Tag>
         </div>
         <h1 className="text-2xl font-semibold text-white">{vault.name}</h1>
         <p className="mt-1 max-w-2xl text-sm leading-relaxed text-zinc-400">
@@ -39,7 +45,7 @@ export function VaultPage({ vault, onBack }: Props) {
 
       {/* Metrics row */}
       <div className="mb-6">
-        <MetricsRow vault={vault} data={data} />
+        <MetricsRow vault={vault} data={data} hasVault={hasVault} />
       </div>
 
       {/* Chart + Action side-by-side */}
@@ -49,7 +55,13 @@ export function VaultPage({ vault, onBack }: Props) {
           <SharePriceChart vault={vault} data={vault.apyHistory} />
         </div>
         <div>
-          <ActionPanel vault={vault} data={data} />
+          <ActionPanel
+            vault={vault}
+            data={data}
+            userVaultAddress={userVaultAddress}
+            hasVault={hasVault}
+            refetchVault={refetchVault}
+          />
         </div>
       </div>
 
@@ -84,9 +96,12 @@ export function VaultPage({ vault, onBack }: Props) {
       <div className="mt-4 rounded-xl border border-surface-border bg-surface-card p-5">
         <h3 className="mb-3 text-sm font-semibold text-white">Contracts</h3>
         <div className="grid gap-2 sm:grid-cols-2">
-          <AddressRow label="Proxy (vault)" address={vault.proxyAddress} />
+          <AddressRow label="VaultFactory" address={vault.factoryAddress} />
           <AddressRow label="Implementation" address={vault.implementationAddress} />
           <AddressRow label="Quote token" address={vault.quoteAddress} />
+          {userVaultAddress && (
+            <AddressRow label="Your vault" address={userVaultAddress} highlight />
+          )}
         </div>
       </div>
 
@@ -143,10 +158,20 @@ function InfoCard({ title, children }: { title: string; children: React.ReactNod
   )
 }
 
-function AddressRow({ label, address }: { label: string; address: string }) {
+function AddressRow({
+  label,
+  address,
+  highlight,
+}: {
+  label: string
+  address: string
+  highlight?: boolean
+}) {
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="text-xs text-zinc-500">{label}</span>
+      <span className={['text-xs', highlight ? 'text-accent' : 'text-zinc-500'].join(' ')}>
+        {label}
+      </span>
       <a
         href={`https://monadvision.com/address/${address}`}
         target="_blank"

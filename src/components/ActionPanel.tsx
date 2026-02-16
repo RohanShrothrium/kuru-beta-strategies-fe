@@ -2,20 +2,51 @@ import { useState, useEffect } from 'react'
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import toast from 'react-hot-toast'
 import { parseEventLogs, maxUint256 } from 'viem'
-import { type VaultConfig, VAULT_ABI, ERC20_ABI } from '../config/vaults'
+import { type VaultConfig, VAULT_ABI, FACTORY_ABI, ERC20_ABI } from '../config/vaults'
 import { type VaultData, usePreviewDeposit, usePreviewWithdraw, usePreviewWithdrawAmounts } from '../hooks/useVaultData'
 import { formatShares, formatUSD, formatCountdown, formatBase } from '../lib/format'
 
 interface Props {
   vault: VaultConfig
   data: VaultData
+  userVaultAddress: `0x${string}` | undefined
+  hasVault: boolean
+  refetchVault: () => void
 }
 
 type Tab = 'deposit' | 'withdraw'
 
-export function ActionPanel({ vault, data }: Props) {
+export function ActionPanel({ vault, data, userVaultAddress, hasVault, refetchVault }: Props) {
   const [tab, setTab] = useState<Tab>('deposit')
   const { address } = useAccount()
+
+  // When the user just created their vault, switch to deposit tab automatically
+  const handleVaultCreated = () => {
+    refetchVault()
+    setTab('deposit')
+  }
+
+  if (!address) {
+    return (
+      <div className="rounded-xl border border-surface-border bg-surface-card">
+        <div className="p-5">
+          <div className="py-8 text-center text-sm text-zinc-500">
+            Connect your wallet to interact with the vault.
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!hasVault) {
+    return (
+      <div className="rounded-xl border border-surface-border bg-surface-card">
+        <div className="p-5">
+          <CreateVaultTab vault={vault} onVaultCreated={handleVaultCreated} />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="rounded-xl border border-surface-border bg-surface-card">
@@ -38,27 +69,105 @@ export function ActionPanel({ vault, data }: Props) {
       </div>
 
       <div className="p-5">
-        {!address ? (
-          <div className="py-8 text-center text-sm text-zinc-500">
-            Connect your wallet to interact with the vault.
-          </div>
-        ) : tab === 'deposit' ? (
-          <DepositTab vault={vault} data={data} />
+        {tab === 'deposit' ? (
+          <DepositTab vault={vault} data={data} userVaultAddress={userVaultAddress!} />
         ) : (
-          <WithdrawTab vault={vault} data={data} />
+          <WithdrawTab vault={vault} data={data} userVaultAddress={userVaultAddress!} />
         )}
       </div>
     </div>
   )
 }
 
+// ── Create Vault Tab ────────────────────────────────────────────────────────────
+
+interface CreateVaultProps {
+  vault: VaultConfig
+  onVaultCreated: () => void
+}
+
+function CreateVaultTab({ vault, onVaultCreated }: CreateVaultProps) {
+  const { writeContract: createVault, data: createTxHash } = useWriteContract()
+  const { isLoading: creating, isSuccess: createSuccess } = useWaitForTransactionReceipt({
+    hash: createTxHash,
+  })
+
+  useEffect(() => {
+    if (createSuccess) {
+      toast.success('Your vault is ready! You can now deposit.')
+      onVaultCreated()
+    }
+  }, [createSuccess])
+
+  function handleCreate() {
+    createVault({
+      address: vault.factoryAddress,
+      abi: FACTORY_ABI,
+      functionName: 'createVault',
+    })
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      {/* Explainer */}
+      <div className="rounded-lg border border-surface-border bg-surface-elevated p-4">
+        <p className="mb-1 text-sm font-medium text-white">Personal vault</p>
+        <p className="text-xs leading-relaxed text-zinc-400">
+          Each depositor gets their own isolated vault. Your 4-day Kuru unlock
+          period is independent — other users' deposits can never reset your lock.
+        </p>
+      </div>
+
+      {/* What happens next */}
+      <div className="flex flex-col gap-2">
+        <StepRow n={1} label="Deploy your vault clone (one tx)" active />
+        <StepRow n={2} label="Approve USDC spending" />
+        <StepRow n={3} label="Deposit USDC to start earning" />
+      </div>
+
+      {/* CTA */}
+      <ActionButton onClick={handleCreate} loading={creating} disabled={false}>
+        {creating ? 'Deploying…' : 'Create My Vault'}
+      </ActionButton>
+
+      <p className="text-center text-xs text-zinc-600">
+        A minimal proxy is deployed on-chain. Gas cost is ~100k.
+      </p>
+    </div>
+  )
+}
+
+function StepRow({ n, label, active }: { n: number; label: string; active?: boolean }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span
+        className={[
+          'flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
+          active ? 'bg-accent text-zinc-900' : 'bg-surface-elevated text-zinc-600',
+        ].join(' ')}
+      >
+        {n}
+      </span>
+      <span className={['text-xs', active ? 'text-zinc-300' : 'text-zinc-600'].join(' ')}>
+        {label}
+      </span>
+    </div>
+  )
+}
+
 // ── Deposit Tab ────────────────────────────────────────────────────────────────
 
-function DepositTab({ vault, data }: Props) {
+interface TabProps {
+  vault: VaultConfig
+  data: VaultData
+  userVaultAddress: `0x${string}`
+}
+
+function DepositTab({ vault, data, userVaultAddress }: TabProps) {
   const [inputValue, setInputValue] = useState('')
 
   const inputAmount = parseInputAmount(inputValue, vault.quoteDecimals)
-  const previewShares = usePreviewDeposit(vault, inputAmount)
+  const previewShares = usePreviewDeposit(userVaultAddress, vault, inputAmount)
 
   const needsApproval =
     inputAmount > 0n &&
@@ -98,14 +207,14 @@ function DepositTab({ vault, data }: Props) {
       address: vault.quoteAddress,
       abi: ERC20_ABI,
       functionName: 'approve',
-      args: [vault.proxyAddress, maxUint256],
+      args: [userVaultAddress, maxUint256],
     })
   }
 
   function handleDeposit() {
     if (inputAmount === 0n) return
     deposit({
-      address: vault.proxyAddress,
+      address: userVaultAddress,
       abi: VAULT_ABI,
       functionName: 'deposit',
       args: [inputAmount],
@@ -181,19 +290,18 @@ function DepositTab({ vault, data }: Props) {
 
 // ── Withdraw Tab ───────────────────────────────────────────────────────────────
 
-function WithdrawTab({ vault, data }: Props) {
+function WithdrawTab({ vault, data, userVaultAddress }: TabProps) {
   const [inputValue, setInputValue] = useState('')
   const [countdown, setCountdown] = useState('')
 
   const userShares = data.userShares ?? 0n
   const inputShares = parseInputAmount(inputValue, vault.quoteDecimals)
-  // previewWithdraw: oracle-priced total (USDC + base) for the summary row.
-  // previewWithdrawAmounts: exact token breakdown for the hover tooltip.
-  const previewTotal = usePreviewWithdraw(vault, inputShares)
-  const previewBreakdown = usePreviewWithdrawAmounts(vault, inputShares)
+  const previewTotal = usePreviewWithdraw(userVaultAddress, vault, inputShares)
+  const previewBreakdown = usePreviewWithdrawAmounts(userVaultAddress, vault, inputShares)
 
-  const unlockAt = data.lastDepositTime
-    ? Number(data.lastDepositTime + data.unlockInterval)
+  // Lock is vault-wide: lastKuruDepositTime + unlockInterval
+  const unlockAt = data.lastKuruDepositTime > 0n
+    ? Number(data.lastKuruDepositTime + data.unlockInterval)
     : null
 
   const isLocked = unlockAt !== null && unlockAt > Math.floor(Date.now() / 1000)
@@ -217,7 +325,6 @@ function WithdrawTab({ vault, data }: Props) {
   useEffect(() => {
     if (!withdrawSuccess) return
 
-    // Parse the Withdraw event to get the exact split between quote and base.
     let message = 'Withdrawal confirmed!'
     if (withdrawReceipt) {
       try {
@@ -237,7 +344,7 @@ function WithdrawTab({ vault, data }: Props) {
           }
         }
       } catch {
-        // log parse failure is non-fatal — keep generic message
+        // log parse failure is non-fatal
       }
     }
 
@@ -249,7 +356,7 @@ function WithdrawTab({ vault, data }: Props) {
   function handleWithdraw() {
     if (inputShares === 0n) return
     withdraw({
-      address: vault.proxyAddress,
+      address: userVaultAddress,
       abi: VAULT_ABI,
       functionName: 'withdraw',
       args: [inputShares],
@@ -258,7 +365,6 @@ function WithdrawTab({ vault, data }: Props) {
 
   const insufficient = inputShares > userShares
 
-  // NAV of user position in USDC
   const positionValue =
     userShares > 0n
       ? BigInt(
@@ -268,7 +374,6 @@ function WithdrawTab({ vault, data }: Props) {
         )
       : 0n
 
-  // Flag whether excess base is likely (LTV below lower band means hedge is light)
   const excessBaseLikely =
     data.currentLTV > 0n && data.currentLTV < 4500n
 
@@ -379,7 +484,7 @@ function WithdrawTab({ vault, data }: Props) {
         )}
       </div>
 
-      {/* Excess base notice — shown when LTV is below the lower band */}
+      {/* Excess base notice */}
       {excessBaseLikely && inputShares > 0n && (
         <div className="flex items-start gap-2 rounded-lg border border-zinc-700/40 bg-zinc-800/30 px-3 py-2">
           <span className="mt-0.5 shrink-0 text-zinc-500">ℹ</span>

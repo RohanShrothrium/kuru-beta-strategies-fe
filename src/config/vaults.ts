@@ -4,11 +4,50 @@
 // All on-chain addresses for each QuoteOnlyVault deployment.
 // Add new vaults here — the UI picks them up automatically.
 //
+// Architecture: VaultFactory creates EIP-1167 clones — one per
+// user. Each user has their own vault address (fetched via
+// factory.vaultOf(userAddress)). There is no shared proxy.
+//
 // API data fields that need to be hydrated (currently placeholder):
 //   - apy:          30d trailing APY from indexed share price data
 //   - apyHistory:   time-series of { timestamp, sharePrice, tvl } for the chart
 //   - totalDeposited: aggregate USDC deposited across all users
 // ============================================================
+
+export const FACTORY_ABI = [
+  // ── Factory actions ────────────────────────────────────────
+  {
+    name: 'createVault',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [],
+    outputs: [{ name: 'vault', type: 'address' }],
+  },
+  // ── Factory views ──────────────────────────────────────────
+  {
+    name: 'vaultOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'user', type: 'address' }],
+    outputs: [{ name: 'vault', type: 'address' }],
+  },
+  {
+    name: 'implementation',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  // ── Events ─────────────────────────────────────────────────
+  {
+    name: 'VaultCreated',
+    type: 'event',
+    inputs: [
+      { name: 'user', type: 'address', indexed: true },
+      { name: 'vault', type: 'address', indexed: true },
+    ],
+  },
+] as const
 
 export const VAULT_ABI = [
   // ── User actions ───────────────────────────────────────────
@@ -102,11 +141,13 @@ export const VAULT_ABI = [
     inputs: [],
     outputs: [{ name: '', type: 'uint256' }],
   },
+  // Vault-wide Kuru deposit timestamp — controls the withdraw lock.
+  // (Per-user vault: only one depositor, so this equals the owner's last deposit time.)
   {
-    name: 'lastDepositTime',
+    name: 'lastKuruDepositTime',
     type: 'function',
     stateMutability: 'view',
-    inputs: [{ name: 'account', type: 'address' }],
+    inputs: [],
     outputs: [{ name: '', type: 'uint256' }],
   },
   // ── ERC20 (inherited) ──────────────────────────────────────
@@ -199,7 +240,9 @@ export interface VaultConfig {
   quoteSymbol: string
   quoteAddress: `0x${string}`
   quoteDecimals: number
-  proxyAddress: `0x${string}`
+  // Factory that creates per-user vault clones (replaces shared proxyAddress)
+  factoryAddress: `0x${string}`
+  // Implementation contract (shared logic for all clones)
   implementationAddress: `0x${string}`
   comingSoon?: boolean
   // API-sourced fields (placeholder until APIs are wired)
@@ -222,7 +265,7 @@ export const VAULTS: VaultConfig[] = [
       'MON is borrowed from Neverland at ~50% LTV against the collateral and deposited alongside the USDC into Kuru.',
       'Kuru earns spread and fee revenue by providing liquidity around the mid-price.',
       'The Neverland borrow precisely offsets the MON long in Kuru, making returns delta-neutral to MON price.',
-      'A keeper calls rebalance() when LTV drifts outside 45–55% to keep the hedge tight.',
+      'Each user owns their own vault — no shared lock contention. Your 4-day unlock is isolated to your deposits only.',
     ],
     risks: [
       'Smart contract risk in QuoteOnlyVault, Kuru, and Neverland.',
@@ -236,8 +279,9 @@ export const VAULTS: VaultConfig[] = [
     quoteSymbol: 'USDC',
     quoteAddress: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603',
     quoteDecimals: 6,
-    proxyAddress: '0xb49ba2E12a7d2BfF6E2870A0B9b7Ab387737abAF',
-    implementationAddress: '0x7e2c26bF237c2AC8f914E565DcCF46Bd4Ab4A03b',
+    // TODO: update factoryAddress once VaultFactory is deployed (run script/DeployVaultSystem.s.sol)
+    factoryAddress: '0xCcb57703b65A8643401b11Cb40878F8cE0d622A3',
+    implementationAddress: '0x352cE7130447023e0eF5D039e6E05A38DC781C10',
     // ── API TODO ──────────────────────────────────────────────
     // apy: fetch 30d trailing APY from /api/vaults/monusdc/apy
     // apyHistory: fetch from /api/vaults/monusdc/history?interval=1d&limit=90
@@ -266,11 +310,11 @@ export const VAULTS: VaultConfig[] = [
     baseDecimals: 18,
     quoteSymbol: 'AUSD',
     // Placeholder — update once deployed
-    quoteAddress: '0x0000000000000000000000000000000000000000',
+    quoteAddress: '0x00000000eFE302BEAA2b3e6e1b18d08D69a9012a',
     quoteDecimals: 6,
-    proxyAddress: '0x0000000000000000000000000000000000000000',
-    implementationAddress: '0x0000000000000000000000000000000000000000',
-    comingSoon: true,
+    factoryAddress: '0x79B99A1e9fF8F16a198Dac4b42Fd164680487062',
+    implementationAddress: '0x27F27Da576b1E0f8720d98A989a1877d68e9EFCC',
+    comingSoon: false,
     apy: null,
     apyHistory: [],
   },

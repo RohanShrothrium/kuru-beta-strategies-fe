@@ -13,13 +13,15 @@ import {
 interface Props {
   vault: VaultConfig
   data: VaultData
+  hasVault: boolean
 }
 
-export function MetricsRow({ vault, data }: Props) {
+export function MetricsRow({ vault, data, hasVault }: Props) {
   const { address } = useAccount()
 
-  const unlockAt = data.lastDepositTime
-    ? Number(data.lastDepositTime + data.unlockInterval)
+  // Lock is vault-wide: lastKuruDepositTime is set when the owner deposits into Kuru.
+  const unlockAt = data.lastKuruDepositTime > 0n
+    ? Number(data.lastKuruDepositTime + data.unlockInterval)
     : null
 
   const isLocked = unlockAt !== null && unlockAt > Math.floor(Date.now() / 1000)
@@ -29,20 +31,23 @@ export function MetricsRow({ vault, data }: Props) {
       ? Number(data.userShares) * Number(data.sharePrice) / 10 ** (vault.quoteDecimals * 2)
       : null
 
+  // When no vault exists yet, most metrics are not meaningful
+  const noVaultSub = 'Create vault to start'
+
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
       <MetricCard
-        label="TVL"
-        value={formatUSD(data.totalAssets, vault.quoteDecimals)}
-        sub={`${formatUSD(data.totalAssets, vault.quoteDecimals, { prefix: false })} ${vault.quoteSymbol}`}
-        loading={data.isLoading}
+        label="Vault NAV"
+        value={hasVault ? formatUSD(data.totalAssets, vault.quoteDecimals) : '—'}
+        sub={hasVault ? `${formatUSD(data.totalAssets, vault.quoteDecimals, { prefix: false })} ${vault.quoteSymbol}` : noVaultSub}
+        loading={hasVault && data.isLoading}
       />
       <MetricCard
         label="Share Price"
-        value={formatSharePrice(data.sharePrice, vault.quoteDecimals)}
-        sub={`${vault.quoteSymbol} per share`}
-        loading={data.isLoading}
-        highlight
+        value={hasVault ? formatSharePrice(data.sharePrice, vault.quoteDecimals) : '—'}
+        sub={hasVault ? `${vault.quoteSymbol} per share` : noVaultSub}
+        loading={hasVault && data.isLoading}
+        highlight={hasVault}
       />
       <MetricCard
         label="APY"
@@ -53,35 +58,39 @@ export function MetricsRow({ vault, data }: Props) {
       />
       <MetricCard
         label="Aave LTV"
-        value={formatLTV(data.currentLTV)}
-        sub="target 50% · band 45–55%"
-        loading={data.isLoading}
+        value={hasVault ? formatLTV(data.currentLTV) : '—'}
+        sub={hasVault ? 'target 50% · band 45–55%' : noVaultSub}
+        loading={hasVault && data.isLoading}
         warn={
-          data.currentLTV > 5500n || (data.currentLTV < 4500n && data.currentLTV > 0n)
+          hasVault && (data.currentLTV > 5500n || (data.currentLTV < 4500n && data.currentLTV > 0n))
         }
       />
       <MetricCard
         label="Unlock Period"
-        value={`${Number(data.unlockInterval) / 86400}d`}
+        value={hasVault ? `${Number(data.unlockInterval) / 86400}d` : '4d'}
         sub="after each deposit"
-        loading={data.isLoading}
+        loading={hasVault && data.isLoading}
       />
       {address ? (
         <MetricCard
           label="Your Position"
           value={
-            userPositionUSD !== null
+            !hasVault
+              ? '—'
+              : userPositionUSD !== null
               ? `$${userPositionUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
               : '—'
           }
           sub={
-            data.userShares !== undefined && data.userShares > 0n
+            !hasVault
+              ? noVaultSub
+              : data.userShares !== undefined && data.userShares > 0n
               ? isLocked
                 ? `Locked · ${formatCountdown(unlockAt!)}`
                 : 'Unlocked'
               : 'No position'
           }
-          loading={data.isLoading}
+          loading={hasVault && data.isLoading}
           subWarn={isLocked}
         />
       ) : (
