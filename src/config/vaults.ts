@@ -378,5 +378,6 @@ export const VAULTS: VaultConfig[] = [
     quoteDecimals: 6,
     factoryAddress: '0xb2c03D0Cb85037F0aF998f158dDF0206b8fB155b',
     implementationAddress: '0xc3a7e12cA9EbE1A9fc335412B480E5fEEab16249',
+    defaultVaultAddress: '0x9AFebDf65b8Cf34d93aeCE7048a29c8113fA76CF',
   },
 ]
