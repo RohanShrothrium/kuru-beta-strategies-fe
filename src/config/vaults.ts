@@ -376,7 +376,7 @@ export const VAULTS: VaultConfig[] = [
     quoteSymbol: 'USDC',
     quoteAddress: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603',
     quoteDecimals: 6,
-    factoryAddress: '0x27d7f49aB3086Ef6d247a9f33C611b51E18D5153',
-    implementationAddress: '0x49826A34f102a2cCf3e4190f404b4AC009B44a80',
+    factoryAddress: '0xb2c03D0Cb85037F0aF998f158dDF0206b8fB155b',
+    implementationAddress: '0xc3a7e12cA9EbE1A9fc335412B480E5fEEab16249',
   },
 ]
