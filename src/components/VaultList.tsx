@@ -1,6 +1,6 @@
 import { VAULTS, type VaultConfig } from '../config/vaults'
-import { formatAPY } from '../lib/format'
-import { useAprDataForVault, useMerklCampaignApr } from '../hooks/useSharePriceApi'
+import { formatAPY, formatDate } from '../lib/format'
+import { useAprDataForVault, useMerklCampaignApr, useNavData } from '../hooks/useSharePriceApi'
 
 interface Props {
   onSelect: (vault: VaultConfig) => void
@@ -33,10 +33,20 @@ function VaultCard({ vault, onSelect }: { vault: VaultConfig; onSelect: (v: Vaul
     !!vault.defaultVaultAddress
   )
   const { aprPercent: merklAprPercent } = useMerklCampaignApr(vault.merklCampaignAddress)
+  const { data: navData, isLoading: navLoading } = useNavData(vault.factoryAddress, !!vault.factoryAddress)
   const totalApr =
     aprData.aprPercent !== null || merklAprPercent !== null
       ? (aprData.aprPercent ?? 0) + (merklAprPercent ?? 0)
       : null
+
+  const formattedTvl =
+    navData !== null
+      ? `$${navData.totalTvl.toLocaleString('en-US', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}`
+      : '—'
+
   return (
     <button
       onClick={() => !vault.comingSoon && onSelect(vault)}
@@ -67,14 +77,52 @@ function VaultCard({ vault, onSelect }: { vault: VaultConfig; onSelect: (v: Vaul
       {/* Metrics footer */}
       <div className="mt-auto flex items-center justify-between border-t border-surface-border pt-4">
         <div>
-          <div className="text-xs text-zinc-500">APR</div>
+          <div className="mb-1 flex items-center gap-1 text-xs text-zinc-500">
+            APR
+            <span className="group relative cursor-help">
+              <span className="text-zinc-600 hover:text-zinc-400">ⓘ</span>
+              <span className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1.5 w-56 -translate-x-1/2 rounded-lg border border-surface-border bg-surface-card px-2.5 py-2 text-xs text-zinc-400 opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between gap-4">
+                    <span className="text-zinc-500">Vault APR</span>
+                    <span>{formatAPY(aprData.aprPercent)}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-zinc-500">Merkl</span>
+                    <span>{formatAPY(merklAprPercent)}</span>
+                  </div>
+                  <div className="my-0.5 border-t border-surface-border" />
+                  <div className="flex justify-between gap-4 font-medium">
+                    <span className="text-zinc-400">Total</span>
+                    <span className="text-accent">
+                      {formatAPY(
+                        aprData.aprPercent !== null || merklAprPercent !== null
+                          ? (aprData.aprPercent ?? 0) + (merklAprPercent ?? 0)
+                          : null
+                      )}
+                    </span>
+                  </div>
+                  {aprData.historical && aprData.latest && (
+                    <div className="mt-0.5 text-zinc-600">
+                      {formatDate(aprData.historical.timestamp)} → {formatDate(aprData.latest.timestamp)}
+                    </div>
+                  )}
+                  <div className="mt-0.5 text-zinc-600">
+                    APR may vary slightly with LTV changes but won't have a material impact.
+                  </div>
+                </div>
+              </span>
+            </span>
+          </div>
           <div className="font-mono text-sm font-semibold text-accent">
             {formatAPY(totalApr)}
           </div>
         </div>
         <div className="text-right">
-          <div className="text-xs text-zinc-500">Strategy</div>
-          <div className="text-xs font-medium text-zinc-300">Delta Neutral</div>
+          <div className="text-xs text-zinc-500">TVL</div>
+          <div className="font-mono text-sm font-semibold text-white">
+            {navLoading ? '—' : formattedTvl}
+          </div>
         </div>
         <div className="text-right">
           <div className="text-xs text-zinc-500">Lock</div>
