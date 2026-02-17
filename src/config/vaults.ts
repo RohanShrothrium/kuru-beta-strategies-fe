@@ -344,4 +344,39 @@ export const VAULTS: VaultConfig[] = [
     merklCampaignAddress: '0x4869A4C7657cEf5E5496C9cE56DDe4CD593e4923',
     comingSoon: false,
   },
+  {
+    id: 'monusdc-staging',
+    name: 'MON / USDC Delta Neutral (Staging)',
+    tagline: 'Market-making yield with no directional MON exposure — HIGH RISK TESTING',
+    description:
+      'Staging version of the MON/USDC vault for testing new strategies. ' +
+      'Deposit USDC and earn market-making fees from the Kuru MON/USDC orderbook. ' +
+      'The vault borrows MON from Neverland (Aave V3 fork) to construct a delta-neutral ' +
+      'position — your MON long inside Kuru is exactly offset by the Neverland borrow, ' +
+      'leaving you with pure USDC-denominated yield. ' +
+      '⚠️ WARNING: This is a high-risk staging deployment for testing purposes only.',
+    strategy: [
+      'Your USDC is split: ~50% stays as Aave collateral, ~50% goes into the Kuru MON/USDC market-making vault.',
+      'MON is borrowed from Neverland at ~50% LTV against the collateral and deposited alongside the USDC into Kuru.',
+      'Kuru earns spread and fee revenue by providing liquidity around the mid-price.',
+      'The Neverland borrow precisely offsets the MON long in Kuru, making returns delta-neutral to MON price.',
+      'Each user owns their own vault — no shared lock contention. Your 4-day unlock is isolated to your deposits only.',
+    ],
+    risks: [
+      '⚠️ HIGH RISK: This is a staging deployment for testing — use at your own risk.',
+      'Smart contract risk in QuoteOnlyVault, Kuru, and Neverland.',
+      'Oracle risk: positions are priced by the Neverland oracle (RedStone).',
+      'LTV drift: rapid MON price moves can widen the hedge before rebalance fires.',
+      'Liquidity risk: Kuru withdrawals are subject to a 4-day unlock period.',
+      'Borrow rate risk: rising MON borrow rates on Neverland reduce net yield.',
+      'Testing risk: This deployment may contain untested code or experimental features.',
+    ],
+    baseSymbol: 'MON',
+    baseDecimals: 18,
+    quoteSymbol: 'USDC',
+    quoteAddress: '0x754704Bc059F8C67012fEd69BC8A327a5aafb603',
+    quoteDecimals: 6,
+    factoryAddress: '0x27d7f49aB3086Ef6d247a9f33C611b51E18D5153',
+    implementationAddress: '0x49826A34f102a2cCf3e4190f404b4AC009B44a80',
+  },
 ]
