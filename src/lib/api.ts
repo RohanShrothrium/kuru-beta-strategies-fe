@@ -87,6 +87,7 @@ const CALCULATE_APR_QUERY = `
     latest: SharePricePoint(
       where: {
         vault: { factory: { _eq: $factoryAddress } }
+        sharePriceE18: { _gt: 0 }
       }
       order_by: { timestamp: desc }
       limit: 200
@@ -99,6 +100,7 @@ const CALCULATE_APR_QUERY = `
       where: {
         vault: { factory: { _eq: $factoryAddress } }
         timestamp: { _lte: $fromTimestamp }
+        sharePriceE18: { _gt: 0 }
       }
       order_by: { timestamp: desc }
       limit: 200
@@ -110,6 +112,7 @@ const CALCULATE_APR_QUERY = `
     earliest: SharePricePoint(
       where: {
         vault: { factory: { _eq: $factoryAddress } }
+        sharePriceE18: { _gt: 0 }
       }
       order_by: { timestamp: asc }
       limit: 200
@@ -126,7 +129,7 @@ const CALCULATE_APR_FOR_VAULT_QUERY = `
     $fromTimestamp: numeric!
   ) {
     latest: SharePricePoint(
-      where: { vault_id: { _eq: $vaultId } }
+      where: { vault_id: { _eq: $vaultId } sharePriceE18: { _gt: 0 } }
       order_by: { timestamp: desc }
       limit: 1
     ) {
@@ -138,6 +141,7 @@ const CALCULATE_APR_FOR_VAULT_QUERY = `
       where: {
         vault_id: { _eq: $vaultId }
         timestamp: { _lte: $fromTimestamp }
+        sharePriceE18: { _gt: 0 }
       }
       order_by: { timestamp: desc }
       limit: 1
@@ -147,7 +151,7 @@ const CALCULATE_APR_FOR_VAULT_QUERY = `
     }
 
     earliest: SharePricePoint(
-      where: { vault_id: { _eq: $vaultId } }
+      where: { vault_id: { _eq: $vaultId } sharePriceE18: { _gt: 0 } }
       order_by: { timestamp: asc }
       limit: 1
     ) {
@@ -554,6 +558,30 @@ export async function fetchNav(
  */
 export function getTimestampDaysAgo(days: number): number {
   return Math.floor(Date.now() / 1000) - (days * 24 * 60 * 60)
+}
+
+/**
+ * Fetches the current incentive APR for a Merkl campaign opportunity.
+ * Returns APR already as a percentage (e.g. 44.3 means 44.3%).
+ * @param campaignAddress - The campaign identifier address
+ * @param chainId - Chain ID (default 143 for Monad)
+ */
+export async function fetchMerklCampaignApr(
+  campaignAddress: string,
+  chainId: number = 143
+): Promise<number | null> {
+  try {
+    const url = `${MERKL_API_BASE}/opportunities?chainId=${chainId}&identifier=${campaignAddress}`
+    const response = await fetch(url)
+    if (!response.ok) return null
+    const data = await response.json()
+    if (!Array.isArray(data) || data.length === 0) return null
+    const apr = data[0]?.apr
+    return typeof apr === 'number' ? apr : null
+  } catch (error) {
+    console.error('Error fetching Merkl campaign APR:', error)
+    return null
+  }
 }
 
 // ── Merkl API Types ─────────────────────────────────────────

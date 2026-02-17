@@ -3,6 +3,7 @@ import {
   fetchSharePriceHistory,
   fetchAprData,
   fetchAprDataForVault,
+  fetchMerklCampaignApr,
   fetchNav,
   getTimestampDaysAgo,
   type NormalizedSharePricePoint,
@@ -295,4 +296,34 @@ export function useNavData(
   const refetch = () => setRefetchTrigger(prev => prev + 1)
 
   return { data, isLoading, error, refetch }
+}
+
+// ── Merkl Campaign APR Hook ──────────────────────────────────
+
+/**
+ * Fetches the current incentive APR for a Merkl campaign opportunity.
+ * @param campaignAddress - The Merkl campaign identifier address
+ * @param chainId - Chain ID (default 143 for Monad)
+ */
+export function useMerklCampaignApr(
+  campaignAddress: string | undefined,
+  chainId: number = 143
+): { aprPercent: number | null; isLoading: boolean } {
+  const [aprPercent, setAprPercent] = useState<number | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+
+  useEffect(() => {
+    if (!campaignAddress) return
+    let cancelled = false
+    setIsLoading(true)
+    fetchMerklCampaignApr(campaignAddress, chainId).then(apr => {
+      if (!cancelled) {
+        setAprPercent(apr)
+        setIsLoading(false)
+      }
+    })
+    return () => { cancelled = true }
+  }, [campaignAddress, chainId])
+
+  return { aprPercent, isLoading }
 }

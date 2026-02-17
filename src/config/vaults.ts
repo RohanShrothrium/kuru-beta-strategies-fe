@@ -271,6 +271,8 @@ export interface VaultConfig {
   implementationAddress: `0x${string}`
   // Default vault address to show example charts/data (when user hasn't created their vault)
   defaultVaultAddress?: `0x${string}`
+  // Merkl opportunity campaign address for incentive APR
+  merklCampaignAddress?: string
   comingSoon?: boolean
 }
 
@@ -307,6 +309,7 @@ export const VAULTS: VaultConfig[] = [
     factoryAddress: '0xCcb57703b65A8643401b11Cb40878F8cE0d622A3',
     implementationAddress: '0x352cE7130447023e0eF5D039e6E05A38DC781C10',
     defaultVaultAddress: '0x560f2b3c4d56e38b449a3a68be033be21dfc4929',
+    merklCampaignAddress: '0xd0F8A6422CcdD812f29D8FB75CF5FCd41483BaDc',
   },
   {
     id: 'monausd',
@@ -338,6 +341,7 @@ export const VAULTS: VaultConfig[] = [
     factoryAddress: '0x79B99A1e9fF8F16a198Dac4b42Fd164680487062',
     implementationAddress: '0x27F27Da576b1E0f8720d98A989a1877d68e9EFCC',
     defaultVaultAddress: '0x7a353534c71d5ac9940f84a3e0356b421d25591d',
+    merklCampaignAddress: '0x4869A4C7657cEf5E5496C9cE56DDe4CD593e4923',
     comingSoon: false,
   },
 ]

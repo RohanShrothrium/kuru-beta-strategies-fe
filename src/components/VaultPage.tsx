@@ -1,6 +1,6 @@
 import { type VaultConfig } from '../config/vaults'
 import { useVaultData, useUserVault } from '../hooks/useVaultData'
-import { useAprDataForVault, useNavData } from '../hooks/useSharePriceApi'
+import { useAprDataForVault, useNavData, useMerklCampaignApr } from '../hooks/useSharePriceApi'
 import { MetricsRow } from './MetricsRow'
 import { SharePriceChart } from './SharePriceChart'
 import { ActionPanel } from './ActionPanel'
@@ -25,6 +25,9 @@ export function VaultPage({ vault, onBack }: Props) {
     30,
     !!vault.defaultVaultAddress
   )
+
+  // Fetch Merkl incentive APR for this vault's campaign
+  const { aprPercent: merklAprPercent } = useMerklCampaignApr(vault.merklCampaignAddress)
 
   // Fetch NAV data (total TVL across all vaults)
   const { data: navData } = useNavData(
@@ -60,11 +63,12 @@ export function VaultPage({ vault, onBack }: Props) {
 
       {/* Metrics row */}
       <div className="mb-6">
-        <MetricsRow 
-          vault={vault} 
-          data={data} 
-          hasVault={hasVault} 
-          aprPercent={aprData.aprPercent}
+        <MetricsRow
+          vault={vault}
+          data={data}
+          hasVault={hasVault}
+          aprData={aprData}
+          merklAprPercent={merklAprPercent}
           navData={navData}
         />
       </div>

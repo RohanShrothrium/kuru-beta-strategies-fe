@@ -1,6 +1,6 @@
 import { VAULTS, type VaultConfig } from '../config/vaults'
 import { formatAPY } from '../lib/format'
-import { useAprDataForVault } from '../hooks/useSharePriceApi'
+import { useAprDataForVault, useMerklCampaignApr } from '../hooks/useSharePriceApi'
 
 interface Props {
   onSelect: (vault: VaultConfig) => void
@@ -32,6 +32,11 @@ function VaultCard({ vault, onSelect }: { vault: VaultConfig; onSelect: (v: Vaul
     30,
     !!vault.defaultVaultAddress
   )
+  const { aprPercent: merklAprPercent } = useMerklCampaignApr(vault.merklCampaignAddress)
+  const totalApr =
+    aprData.aprPercent !== null || merklAprPercent !== null
+      ? (aprData.aprPercent ?? 0) + (merklAprPercent ?? 0)
+      : null
   return (
     <button
       onClick={() => !vault.comingSoon && onSelect(vault)}
@@ -64,7 +69,7 @@ function VaultCard({ vault, onSelect }: { vault: VaultConfig; onSelect: (v: Vaul
         <div>
           <div className="text-xs text-zinc-500">APR</div>
           <div className="font-mono text-sm font-semibold text-accent">
-            {formatAPY(aprData.aprPercent)}
+            {formatAPY(totalApr)}
           </div>
         </div>
         <div className="text-right">

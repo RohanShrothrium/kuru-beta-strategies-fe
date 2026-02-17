@@ -1,7 +1,8 @@
+import React from 'react'
 import { useAccount } from 'wagmi'
 import { type VaultConfig } from '../config/vaults'
 import { type VaultData } from '../hooks/useVaultData'
-import { type NavData } from '../lib/api'
+import { type NavData, type AprData } from '../lib/api'
 import {
   formatUSD,
   formatShares,
@@ -9,17 +10,19 @@ import {
   formatLTV,
   formatAPY,
   formatCountdown,
+  formatDate,
 } from '../lib/format'
 
 interface Props {
   vault: VaultConfig
   data: VaultData
   hasVault: boolean
-  aprPercent: number | null
+  aprData: AprData
+  merklAprPercent: number | null
   navData: NavData | null
 }
 
-export function MetricsRow({ vault, data, hasVault, aprPercent, navData }: Props) {
+export function MetricsRow({ vault, data, hasVault, aprData, merklAprPercent, navData }: Props) {
   const { address } = useAccount()
 
   // Lock is vault-wide: lastKuruDepositTime is set when the owner deposits into Kuru.
@@ -69,11 +72,45 @@ export function MetricsRow({ vault, data, hasVault, aprPercent, navData }: Props
       />
       <MetricCard
         label="APR"
-        value={formatAPY(aprPercent)}
-        sub="30d trailing · default vault"
+        value={formatAPY(
+          aprData.aprPercent !== null || merklAprPercent !== null
+            ? (aprData.aprPercent ?? 0) + (merklAprPercent ?? 0)
+            : null
+        )}
+        sub="vault + merkl incentives"
         loading={false}
-        highlight={aprPercent !== null}
-        tooltip="APR may vary slightly based on your current LTV, but won't have a material impact on overall returns."
+        highlight={aprData.aprPercent !== null || merklAprPercent !== null}
+        tooltip={
+          <div className="flex flex-col gap-1">
+            <div className="flex justify-between gap-4">
+              <span className="text-zinc-500">Vault APR</span>
+              <span>{formatAPY(aprData.aprPercent)}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-zinc-500">Merkl</span>
+              <span>{formatAPY(merklAprPercent)}</span>
+            </div>
+            <div className="my-0.5 border-t border-surface-border" />
+            <div className="flex justify-between gap-4 font-medium">
+              <span className="text-zinc-400">Total</span>
+              <span className="text-accent">
+                {formatAPY(
+                  aprData.aprPercent !== null || merklAprPercent !== null
+                    ? (aprData.aprPercent ?? 0) + (merklAprPercent ?? 0)
+                    : null
+                )}
+              </span>
+            </div>
+            {aprData.historical && aprData.latest && (
+              <div className="mt-0.5 text-zinc-600">
+                {formatDate(aprData.historical.timestamp)} → {formatDate(aprData.latest.timestamp)}
+              </div>
+            )}
+            <div className="mt-0.5 text-zinc-600">
+              APR may vary slightly with LTV changes but won't have a material impact.
+            </div>
+          </div>
+        }
       />
       <MetricCard
         label="Aave LTV"
@@ -127,7 +164,7 @@ interface MetricCardProps {
   highlight?: boolean
   warn?: boolean
   subWarn?: boolean
-  tooltip?: string
+  tooltip?: React.ReactNode
 }
 
 function MetricCard({ label, value, sub, loading, highlight, warn, subWarn, tooltip }: MetricCardProps) {
@@ -138,7 +175,7 @@ function MetricCard({ label, value, sub, loading, highlight, warn, subWarn, tool
         {tooltip && (
           <span className="group relative cursor-help">
             <span className="text-zinc-600 hover:text-zinc-400">ⓘ</span>
-            <span className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1.5 w-52 -translate-x-1/2 rounded-lg border border-surface-border bg-surface-card px-2.5 py-1.5 text-xs text-zinc-400 opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+            <span className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1.5 w-56 -translate-x-1/2 rounded-lg border border-surface-border bg-surface-card px-2.5 py-2 text-xs text-zinc-400 opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
               {tooltip}
             </span>
           </span>
