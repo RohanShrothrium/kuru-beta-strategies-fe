@@ -1,6 +1,6 @@
 import { type VaultConfig } from '../config/vaults'
 import { useVaultData, useUserVault } from '../hooks/useVaultData'
-import { useAprData } from '../hooks/useSharePriceApi'
+import { useAprDataForVault, useNavData } from '../hooks/useSharePriceApi'
 import { MetricsRow } from './MetricsRow'
 import { SharePriceChart } from './SharePriceChart'
 import { ActionPanel } from './ActionPanel'
@@ -19,14 +19,17 @@ export function VaultPage({ vault, onBack }: Props) {
   // When hasVault is false, data returns sensible zero-defaults.
   const data = useVaultData(vault, userVaultAddress)
 
-  // Use user's vault if they have one, otherwise show default vault as example
-  const vaultToQuery = userVaultAddress || vault.defaultVaultAddress || ''
-
-  // Fetch APR data (30-day trailing)
-  const { data: aprData } = useAprData(
-    vaultToQuery,
+  // Fetch APR data (30-day trailing) from the default vault proxy
+  const { data: aprData } = useAprDataForVault(
+    vault.defaultVaultAddress,
     30,
-    !!vaultToQuery // Only fetch if we have a vault address
+    !!vault.defaultVaultAddress
+  )
+
+  // Fetch NAV data (total TVL across all vaults)
+  const { data: navData } = useNavData(
+    vault.factoryAddress,
+    !!vault.factoryAddress
   )
 
   return (
@@ -53,22 +56,23 @@ export function VaultPage({ vault, onBack }: Props) {
         <p className="mt-1 max-w-2xl text-sm leading-relaxed text-zinc-400">
           {vault.description}
         </p>
-        {!hasVault && vault.defaultVaultAddress && (
-          <p className="mt-2 text-xs text-amber-400">
-            📊 Showing example data from a sample vault. Create your own vault to track your personal performance.
-          </p>
-        )}
       </div>
 
       {/* Metrics row */}
       <div className="mb-6">
-        <MetricsRow vault={vault} data={data} hasVault={hasVault} aprPercent={aprData.aprPercent} />
+        <MetricsRow 
+          vault={vault} 
+          data={data} 
+          hasVault={hasVault} 
+          aprPercent={aprData.aprPercent}
+          navData={navData}
+        />
       </div>
 
       {/* Chart + Action side-by-side */}
       <div className="mb-8 grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <SharePriceChart vault={vault} userVaultAddress={userVaultAddress} />
+          <SharePriceChart vault={vault} />
         </div>
         <div>
           <ActionPanel

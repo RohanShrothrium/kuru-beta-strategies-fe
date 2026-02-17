@@ -1,6 +1,7 @@
 import { useAccount } from 'wagmi'
 import { type VaultConfig } from '../config/vaults'
 import { type VaultData } from '../hooks/useVaultData'
+import { type NavData } from '../lib/api'
 import {
   formatUSD,
   formatShares,
@@ -15,9 +16,10 @@ interface Props {
   data: VaultData
   hasVault: boolean
   aprPercent: number | null
+  navData: NavData | null
 }
 
-export function MetricsRow({ vault, data, hasVault, aprPercent }: Props) {
+export function MetricsRow({ vault, data, hasVault, aprPercent, navData }: Props) {
   const { address } = useAccount()
 
   // Lock is vault-wide: lastKuruDepositTime is set when the owner deposits into Kuru.
@@ -35,27 +37,43 @@ export function MetricsRow({ vault, data, hasVault, aprPercent }: Props) {
   // When no vault exists yet, most metrics are not meaningful
   const noVaultSub = 'Create vault to start'
 
+  // Use aggregated factory data for NAV and Share Price
+  const totalNav = navData?.totalTvl ?? 0
+  const averageSharePrice = navData?.averageSharePrice ?? 0
+  const navLoading = navData === null
+
+  // Format NAV: totalTvl is already in USD, so format directly
+  const formattedNav = navData 
+    ? `$${totalNav.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : '—'
+  
+  // Format share price: averageSharePrice is already normalized
+  const formattedSharePrice = navData 
+    ? averageSharePrice.toFixed(6)
+    : '—'
+
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
       <MetricCard
-        label="Your Vault NAV"
-        value={hasVault ? formatUSD(data.totalAssets, vault.quoteDecimals) : '—'}
-        sub={hasVault ? `${formatUSD(data.totalAssets, vault.quoteDecimals, { prefix: false })} ${vault.quoteSymbol}` : noVaultSub}
-        loading={hasVault && data.isLoading}
+        label="Vault NAV"
+        value={formattedNav}
+        sub={navData ? `Total across all vaults · ${vault.quoteSymbol}` : 'Loading...'}
+        loading={navLoading}
       />
       <MetricCard
         label="Share Price"
-        value={hasVault ? formatSharePrice(data.sharePrice, vault.quoteDecimals) : '—'}
-        sub={hasVault ? `${vault.quoteSymbol} per share` : noVaultSub}
-        loading={hasVault && data.isLoading}
-        highlight={hasVault}
+        value={formattedSharePrice}
+        sub={navData ? `Average · ${vault.quoteSymbol} per share` : 'Loading...'}
+        loading={navLoading}
+        highlight={!!navData}
       />
       <MetricCard
-        label={hasVault ? "Your APR" : "APR (example)"}
+        label="APR"
         value={formatAPY(aprPercent)}
-        sub={hasVault ? "30d trailing · your vault" : "30d trailing · sample"}
+        sub="30d trailing · default vault"
         loading={false}
         highlight={aprPercent !== null}
+        tooltip="APR may vary slightly based on your current LTV, but won't have a material impact on overall returns."
       />
       <MetricCard
         label="Aave LTV"
@@ -109,12 +127,23 @@ interface MetricCardProps {
   highlight?: boolean
   warn?: boolean
   subWarn?: boolean
+  tooltip?: string
 }
 
-function MetricCard({ label, value, sub, loading, highlight, warn, subWarn }: MetricCardProps) {
+function MetricCard({ label, value, sub, loading, highlight, warn, subWarn, tooltip }: MetricCardProps) {
   return (
     <div className="rounded-xl border border-surface-border bg-surface-card p-4">
-      <div className="mb-1 text-xs text-zinc-500">{label}</div>
+      <div className="mb-1 flex items-center gap-1 text-xs text-zinc-500">
+        {label}
+        {tooltip && (
+          <span className="group relative cursor-help">
+            <span className="text-zinc-600 hover:text-zinc-400">ⓘ</span>
+            <span className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1.5 w-52 -translate-x-1/2 rounded-lg border border-surface-border bg-surface-card px-2.5 py-1.5 text-xs text-zinc-400 opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+              {tooltip}
+            </span>
+          </span>
+        )}
+      </div>
       {loading ? (
         <div className="h-6 w-20 animate-pulse rounded bg-surface-elevated" />
       ) : (

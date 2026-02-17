@@ -13,84 +13,56 @@ import { useSharePriceHistory } from '../hooks/useSharePriceApi'
 
 interface Props {
   vault: VaultConfig
-  userVaultAddress?: `0x${string}`
 }
 
 type ActiveTab = 'price' | 'tvl'
 type TimeFrame = 1 | 10 | 30
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 
-export function SharePriceChart({ vault, userVaultAddress }: Props) {
+function formatTvl(v: number): string {
+  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`
+  if (v >= 1_000) return `$${(v / 1_000).toFixed(1)}K`
+  return `$${v.toFixed(0)}`
+}
+
+export function SharePriceChart({ vault }: Props) {
   const [tab, setTab] = useState<ActiveTab>('price')
   const [timeFrame, setTimeFrame] = useState<TimeFrame>(1)
 
-  // Use user's vault if they have one, otherwise show default vault as example
-  const vaultToQuery = userVaultAddress || vault.defaultVaultAddress || ''
-  const isShowingExample = !userVaultAddress && !!vault.defaultVaultAddress
-
   // Fetch share price history from API based on selected time frame
+  // Uses factory address to aggregate data across all vaults
   const { data, isLoading } = useSharePriceHistory(
-    vaultToQuery,
+    vault.factoryAddress,
     timeFrame,
     undefined,
-    !!vaultToQuery // Only fetch if we have a vault address
+    !!vault.factoryAddress
   )
 
   const hasData = data.length > 0
 
   // Show time for 1-day view, date for longer periods
   const showTime = timeFrame === 1
-  
+
   const chartData = data.map((d) => ({
-    date: formatDate(d.timestamp, showTime),
     price: d.sharePrice,
     tvl: d.tvl,
     timestamp: d.timestamp,
   }))
 
-  // Calculate 6 evenly spaced x-axis ticks from lowest to highest timestamp
-  const getXAxisTicks = () => {
-    if (!hasData || chartData.length === 0) return []
-    
-    const dataLength = chartData.length
-    if (dataLength <= 6) {
-      // If we have 6 or fewer data points, show all of them
-      return chartData.map((d) => d.date)
-    }
-    
-    // Calculate 6 evenly spaced indices (including first and last)
-    const indices: number[] = []
-    const numTicks = 6
-    
-    for (let i = 0; i < numTicks; i++) {
-      if (i === 0) {
-        // First tick: lowest timestamp
-        indices.push(0)
-      } else if (i === numTicks - 1) {
-        // Last tick: highest timestamp
-        indices.push(dataLength - 1)
-      } else {
-        // Evenly spaced ticks in between
-        const index = Math.round((i / (numTicks - 1)) * (dataLength - 1))
-        // Avoid duplicates
-        if (index !== indices[indices.length - 1] && index < dataLength - 1) {
-          indices.push(index)
-        }
-      }
-    }
-    
-    // Ensure we have the last index if it wasn't added
-    if (indices[indices.length - 1] !== dataLength - 1) {
-      indices.push(dataLength - 1)
-    }
-    
-    // Remove duplicates and return the date labels
-    const uniqueIndices = [...new Set(indices)]
-    return uniqueIndices.map((idx) => chartData[idx].date)
-  }
+  // Derive domain from actual data so sparse data fills the chart width
+  const dataStart = hasData ? chartData[0].timestamp : 0
+  const dataEnd = hasData ? chartData[chartData.length - 1].timestamp : 0
 
-  const xAxisTicks = getXAxisTicks()
+  // Six evenly-spaced timestamps across the actual data range
+  const xAxisTicks = useMemo(() => {
+    if (!hasData || dataStart === dataEnd) return []
+    const ticks: number[] = []
+    for (let i = 0; i <= 5; i++) {
+      ticks.push(Math.round(dataStart + (i / 5) * (dataEnd - dataStart)))
+    }
+    return ticks
+  }, [dataStart, dataEnd, hasData])
 
   // Calculate dynamic Y-axis domain with 10% padding
   const calculateYDomain = () => {
@@ -123,11 +95,7 @@ export function SharePriceChart({ vault, userVaultAddress }: Props) {
           <div>
             <h3 className="text-sm font-semibold text-white">Performance</h3>
             <p className="mt-0.5 text-xs text-zinc-500">
-              {hasData 
-                ? isShowingExample 
-                  ? `Example vault · Historic share price · ${timeFrame}d`
-                  : `Your vault · Historic share price · ${timeFrame}d`
-                : 'No history yet'}
+              {hasData ? `Factory avg · Historic share price · ${timeFrame}d` : 'No history yet'}
             </p>
           </div>
 
@@ -184,11 +152,15 @@ export function SharePriceChart({ vault, userVaultAddress }: Props) {
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#252637" vertical={false} />
               <XAxis
-                dataKey="date"
+                dataKey="timestamp"
+                type="number"
+                scale="time"
+                domain={[dataStart, dataEnd]}
+                ticks={xAxisTicks}
+                tickFormatter={(ts: number) => formatDate(ts, showTime)}
                 tick={{ fill: '#71717a', fontSize: 11 }}
                 tickLine={false}
                 axisLine={false}
-                ticks={xAxisTicks}
                 interval={0}
               />
               <YAxis
@@ -197,9 +169,7 @@ export function SharePriceChart({ vault, userVaultAddress }: Props) {
                 tickLine={false}
                 axisLine={false}
                 tickFormatter={(v: number) =>
-                  tab === 'price'
-                    ? v.toFixed(4)
-                    : `$${(v / 1e6).toFixed(0)}M`
+                  tab === 'price' ? v.toFixed(4) : formatTvl(v)
                 }
                 width={60}
               />
@@ -214,7 +184,7 @@ export function SharePriceChart({ vault, userVaultAddress }: Props) {
                 formatter={(value: number) =>
                   tab === 'price'
                     ? [`${value.toFixed(6)} ${vault.quoteSymbol}`, 'Share Price']
-                    : [`$${value.toLocaleString()}`, 'TVL']
+                    : [formatTvl(value), 'TVL']
                 }
                 labelStyle={{ color: '#71717a' }}
               />
@@ -234,12 +204,6 @@ export function SharePriceChart({ vault, userVaultAddress }: Props) {
         )}
       </div>
 
-      {/* API note */}
-      <p className="mt-3 text-xs text-zinc-600">
-        {isShowingExample 
-          ? 'Showing example vault data · Create your vault to track your own performance'
-          : 'Your personal vault data · TVL and APR are per-user metrics'}
-      </p>
     </div>
   )
 }
